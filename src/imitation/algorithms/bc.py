@@ -22,8 +22,10 @@ from typing import (
 import gymnasium as gym
 import numpy as np
 import torch as th
+import torch.functional as F
 import tqdm
 from stable_baselines3.common import policies, torch_layers, utils, vec_env
+from stable_baselines3.td3.policies import Actor
 
 from imitation.algorithms import base as algo_base
 from imitation.data import rollout, types
@@ -107,6 +109,7 @@ class BehaviorCloningLossCalculator:
             Dict[str, th.Tensor],
         ],
         acts: Union[th.Tensor, np.ndarray],
+        deterministic: bool = False,
     ) -> BCTrainingMetrics:
         """Calculate the supervised learning loss used to train the behavioral clone.
 
@@ -125,25 +128,39 @@ class BehaviorCloningLossCalculator:
         )
         acts = util.safe_to_tensor(acts)
 
-        # policy.evaluate_actions's type signatures are incorrect.
-        # See https://github.com/DLR-RM/stable-baselines3/issues/1679
-        (_, log_prob, entropy) = policy.evaluate_actions(
-            tensor_obs,  # type: ignore[arg-type]
-            acts,
-        )
-        prob_true_act = th.exp(log_prob).mean()
-        log_prob = log_prob.mean()
-        entropy = entropy.mean() if entropy is not None else None
+        if not deterministic:
+            # policy.evaluate_actions's type signatures are incorrect.
+            # See https://github.com/DLR-RM/stable-baselines3/issues/1679
+            (_, log_prob, entropy) = policy.evaluate_actions(
+                tensor_obs,  # type: ignore[arg-type]
+                acts,
+            )
+            prob_true_act = th.exp(log_prob).mean()
+            log_prob = log_prob.mean()
+            entropy = entropy.mean() if entropy is not None else None
 
-        l2_norms = [th.sum(th.square(w)) for w in policy.parameters()]
-        l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
-        # sum of list defaults to float(0) if len == 0.
-        assert isinstance(l2_norm, th.Tensor)
+            l2_norms = [th.sum(th.square(w)) for w in policy.parameters()]
+            l2_norm = sum(l2_norms) / 2  # divide by 2 to cancel with gradient of square
+            # sum of list defaults to float(0) if len == 0.
+            assert isinstance(l2_norm, th.Tensor)
 
-        ent_loss = -self.ent_weight * (entropy if entropy is not None else th.zeros(1))
-        neglogp = -log_prob
-        l2_loss = self.l2_weight * l2_norm
-        loss = neglogp + ent_loss + l2_loss
+            ent_loss = -self.ent_weight * (entropy if entropy is not None else th.zeros(1))
+            neglogp = -log_prob
+            l2_loss = self.l2_weight * l2_norm
+            loss = neglogp + ent_loss + l2_loss
+        else:
+            # In deterministic case, we only calculate the MSE loss between the
+            # policy's action and the expert action, without entropy regularization
+            # or L2 regularization.
+            with th.no_grad():
+                policy_actions = policy(tensor_obs)  # type: ignore[arg-type]
+                mse_loss = F.mse_loss(policy_actions, acts)
+            neglogp = mse_loss
+            ent_loss = th.zeros(1)
+            prob_true_act = th.tensor(0.0)
+            l2_norm = th.tensor(0.0)
+            l2_loss = th.tensor(0.0)
+            loss = mse_loss
 
         return BCTrainingMetrics(
             neglogp=neglogp,
@@ -277,7 +294,7 @@ class BC(algo_base.DemonstrationAlgorithm):
         observation_space: gym.Space,
         action_space: gym.Space,
         rng: np.random.Generator,
-        policy: Optional[policies.ActorCriticPolicy] = None,
+        policy: Optional[Actor] = None,
         demonstrations: Optional[algo_base.AnyTransitions] = None,
         batch_size: int = 32,
         minibatch_size: Optional[int] = None,
@@ -367,6 +384,7 @@ class BC(algo_base.DemonstrationAlgorithm):
         )
 
         self.loss_calculator = BehaviorCloningLossCalculator(ent_weight, l2_weight)
+        
 
     @property
     def policy(self) -> policies.ActorCriticPolicy:
@@ -492,7 +510,7 @@ class BC(algo_base.DemonstrationAlgorithm):
                 types.maybe_unwrap_dictobs(batch["obs"]),
             )
             acts = util.safe_to_tensor(batch["acts"], device=self.policy.device)
-            training_metrics = self.loss_calculator(self.policy, obs_tensor, acts)
+            training_metrics = self.loss_calculator(self.policy, obs_tensor, acts, deterministic=True)
 
             # Renormalise the loss to be averaged over the whole
             # batch size instead of the minibatch size.

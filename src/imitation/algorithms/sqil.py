@@ -10,6 +10,8 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 from stable_baselines3 import dqn
+from stable_baselines3 import ddpg
+from stable_baselines3 import td3
 from stable_baselines3.common import (
     buffers,
     off_policy_algorithm,
@@ -26,7 +28,7 @@ from imitation.util import logger, util
 class SQIL(algo_base.DemonstrationAlgorithm[types.Transitions]):
     """Soft Q Imitation Learning (SQIL).
 
-    Trains a policy via DQN-style Q-learning,
+    Trains a policy via TD3 style actor critic,
     replacing half the buffer with expert demonstrations and adjusting the rewards.
     """
 
@@ -39,7 +41,7 @@ class SQIL(algo_base.DemonstrationAlgorithm[types.Transitions]):
         demonstrations: Optional[algo_base.AnyTransitions],
         policy: Union[str, Type[policies.BasePolicy]],
         custom_logger: Optional[logger.HierarchicalLogger] = None,
-        rl_algo_class: Type[off_policy_algorithm.OffPolicyAlgorithm] = dqn.DQN,
+        rl_algo_class: Type[off_policy_algorithm.OffPolicyAlgorithm] = td3.TD3,
         rl_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """Builds SQIL.
@@ -53,7 +55,7 @@ class SQIL(algo_base.DemonstrationAlgorithm[types.Transitions]):
             rl_kwargs: Keyword arguments to pass to the RL algorithm constructor.
 
         Raises:
-            ValueError: if `dqn_kwargs` includes a key
+            ValueError: if `rl_kwargs` includes a key
                 `replay_buffer_class` or `replay_buffer_kwargs`.
         """
         self.venv = venv

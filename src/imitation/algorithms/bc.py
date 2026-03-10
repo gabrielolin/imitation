@@ -104,6 +104,7 @@ class BehaviorCloningLossCalculator:
 
     ent_weight: float
     l2_weight: float
+    action_scale: Optional[th.Tensor] = None  # per-dim scale for normalized MSE
 
     def __call__(
         self,
@@ -159,7 +160,11 @@ class BehaviorCloningLossCalculator:
             # policy's action and the expert action, without entropy regularization
             # or L2 regularization.
             policy_actions = policy(tensor_obs)  # type: ignore[arg-type]
-            mse_loss = F.mse_loss(policy_actions, acts.float())
+            if self.action_scale is not None:
+                _scale = self.action_scale.to(policy_actions.device)
+                mse_loss = F.mse_loss(policy_actions / _scale, acts.float() / _scale)
+            else:
+                mse_loss = F.mse_loss(policy_actions, acts.float())
             neglogp = mse_loss
             entropy = None
             ent_loss = th.zeros(1)

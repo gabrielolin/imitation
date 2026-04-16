@@ -221,6 +221,7 @@ class InteractiveTrajectoryCollector(vec_env.VecEnvWrapper):
         """
         self.traj_accum = rollout.TrajectoryAccumulator()
         obs = self.venv.reset()
+        self.venv.set_options(options={'load_yaml': 'envs/eval_environment.yaml'})
         assert isinstance(obs, np.ndarray)
         for i, ob in enumerate(obs):
             self.traj_accum.add_step({"obs": ob}, key=i)

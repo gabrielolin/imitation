@@ -14,7 +14,7 @@ import uuid
 from typing import Any, Callable, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
-import torch as th
+import torch
 from stable_baselines3.common import policies, utils, vec_env
 from stable_baselines3.common.vec_env.base_vec_env import VecEnvStepReturn
 from torch.utils import data as th_data
@@ -41,7 +41,7 @@ class AggreVateTrainer(base.BaseImitationAlgorithm):
         bc_trainer: bc.BC,
         custom_logger: Optional[imit_logger.HierarchicalLogger] = None,
     ):
-        """Builds DAggerTrainer.
+        """Builds AggreVateTrainer.
 
         Args:
             venv: Vectorized training environment.
@@ -241,7 +241,7 @@ class AggreVateTrainer(base.BaseImitationAlgorithm):
             self.scratch_dir / "checkpoint-latest.pt",
         ]
         for checkpoint_path in checkpoint_paths:
-            th.save(self, checkpoint_path)
+            torch.save(self, checkpoint_path)
 
         # save policies separately for convenience
         policy_paths = [

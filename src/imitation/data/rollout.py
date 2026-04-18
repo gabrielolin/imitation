@@ -416,7 +416,7 @@ def generate_trajectories(
     # accumulator for incomplete trajectories
     trajectories_accum = TrajectoryAccumulator()
     obs = venv.reset()
-    venv.set_options(options={'load_yaml': 'envs/eval_environment.yaml'})
+
     assert isinstance(
         obs,
         (np.ndarray, dict),

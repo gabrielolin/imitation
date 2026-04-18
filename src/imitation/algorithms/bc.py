@@ -20,6 +20,8 @@ from typing import (
     Union,
 )
 
+import torch
+
 # Optional per-call timing hooks.  profile_train.py may inject callables here.
 # Each entry maps a label string to a ``(elapsed_seconds: float) -> None`` callback.
 # If empty (default), zero overhead — no hooks are called.
@@ -162,9 +164,13 @@ class BehaviorCloningLossCalculator:
             policy_actions = policy(tensor_obs)  # type: ignore[arg-type]
             if self.action_scale is not None:
                 _scale = self.action_scale.to(policy_actions.device)
-                mse_loss = F.mse_loss(policy_actions / _scale, acts.float() / _scale)
+                err = (policy_actions - acts.float()) / _scale
             else:
-                mse_loss = F.mse_loss(policy_actions, acts.float())
+                err = policy_actions - acts.float()
+            # Weight beta (dim 1) more heavily than acceleration (dim 0)
+            dim_weights = torch.tensor([1.0, 10.0], device=err.device, dtype=err.dtype)
+            mse_loss = (err ** 2 * dim_weights).mean()
+            
             neglogp = mse_loss
             entropy = None
             ent_loss = th.zeros(1)
